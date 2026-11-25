@@ -8,7 +8,9 @@ const DEFAULT_DATABASE_PATH = '/tmp/movies-default.sqlite';
 const closeMock = vi.fn();
 const getDatabaseMock = vi.fn(() => ({ close: closeMock }));
 const parseGenresCsvMock = vi.fn();
+const parseMoviesCsvMock = vi.fn();
 const upsertGenresMock = vi.fn();
+const upsertMoviesMock = vi.fn();
 const deleteUnusedGenresMock = vi.fn();
 
 vi.mock('./database/schema.ts', () => ({
@@ -20,9 +22,17 @@ vi.mock('./utils/genre-csv.ts', () => ({
   parseGenresCsv: parseGenresCsvMock,
 }));
 
+vi.mock('./utils/movie-csv.ts', () => ({
+  parseMoviesCsv: parseMoviesCsvMock,
+}));
+
 vi.mock('./database/genre-repository.ts', () => ({
   deleteUnusedGenres: deleteUnusedGenresMock,
   upsertGenres: upsertGenresMock,
+}));
+
+vi.mock('./database/movie-repository.ts', () => ({
+  upsertMovies: upsertMoviesMock,
 }));
 
 /**
@@ -44,7 +54,9 @@ describe('backend-cli.ts', () => {
     vi.clearAllMocks();
     vi.resetModules();
     parseGenresCsvMock.mockReturnValue([]);
+    parseMoviesCsvMock.mockReturnValue([]);
     upsertGenresMock.mockReturnValue(0);
+    upsertMoviesMock.mockReturnValue(0);
     deleteUnusedGenresMock.mockReturnValue(0);
   });
 
@@ -116,6 +128,62 @@ describe('backend-cli.ts', () => {
       } finally {
         logSpy.mockRestore();
       }
+    });
+
+    describe('add-movies', () => {
+      it('validates the CSV before opening the database and closes it after importing', async () => {
+        // Arrange
+        const directory = mkdtempSync(join(tmpdir(), 'movies-cli-'));
+        const csvFile = join(directory, 'movies.csv');
+        writeFileSync(csvFile, 'id,title\n11,Movie\n');
+        const customDatabasePath = join(directory, 'movies.sqlite');
+        const movies = [{ id: 11, title: 'Movie' }];
+        parseMoviesCsvMock.mockReturnValue(movies);
+        upsertMoviesMock.mockReturnValue(1);
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        // Act
+        try {
+          await runCliWithArgs([
+            '--path',
+            customDatabasePath,
+            'add-movies',
+            csvFile,
+          ]);
+
+          // Assert
+          expect(parseMoviesCsvMock).toHaveBeenCalledWith(
+            'id,title\n11,Movie\n',
+          );
+          expect(getDatabaseMock).toHaveBeenCalledWith(customDatabasePath);
+          expect(upsertMoviesMock).toHaveBeenCalledWith(
+            { close: closeMock },
+            movies,
+          );
+          expect(closeMock).toHaveBeenCalledOnce();
+          expect(logSpy).toHaveBeenCalledWith(
+            `Imported 1 movies into ${resolve(customDatabasePath)}`,
+          );
+        } finally {
+          logSpy.mockRestore();
+        }
+      });
+
+      it('does not open the database when CSV validation fails', async () => {
+        // Arrange
+        const directory = mkdtempSync(join(tmpdir(), 'movies-cli-'));
+        const csvFile = join(directory, 'invalid-movies.csv');
+        writeFileSync(csvFile, 'invalid');
+        parseMoviesCsvMock.mockImplementation(() => {
+          throw new Error('Invalid movies CSV');
+        });
+
+        // Act and assert
+        await expect(runCliWithArgs(['add-movies', csvFile])).rejects.toThrow(
+          'Invalid movies CSV',
+        );
+        expect(getDatabaseMock).not.toHaveBeenCalled();
+      });
     });
 
     it('does not open the database when CSV validation fails', async () => {

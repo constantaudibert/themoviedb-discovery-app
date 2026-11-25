@@ -79,6 +79,31 @@ node src/back-end/backend-cli.ts clean-genres
 L'option `--path` permet de sélectionner une autre base SQLite. Les commandes
 affichent le nombre de genres importés ou supprimés ainsi que le chemin de la base.
 
+## Import des films
+
+Importez ou actualisez les films depuis un fichier CSV avec les colonnes
+obligatoires `id`, `title`, `original_title`, `original_language`, `overview`
+et `collected_at`. Les autres colonnes de la table `movies` sont facultatives ;
+une cellule vide ou une colonne absente correspond à `NULL` :
+`release_date`, `popularity`, `vote_average`, `vote_count`, `poster_path`,
+`backdrop_path`, `runtime_minutes`, `budget` et `revenue`.
+
+Les en-têtes peuvent être dans n'importe quel ordre. L'identifiant sert de clé
+d'upsert : les lignes existantes sont mises à jour et les nouvelles sont
+insérées. Tout le fichier est traité dans une transaction.
+
+```sh
+node src/back-end/backend-cli.ts add-movies ./data/movies.csv
+node src/back-end/backend-cli.ts --path ./data/custom-movies.sqlite add-movies ./data/movies.csv
+```
+
+Le format est illustré par cet exemple :
+
+```csv
+id,title,original_title,original_language,overview,collected_at,release_date,popularity,vote_average,vote_count,poster_path,backdrop_path,runtime_minutes,budget,revenue
+11,Example,Example,en,A movie,2026-11-25T00:00:00.000Z,2020-01-02,12.5,7.8,100,/poster.jpg,/backdrop.jpg,120,1000000,2000000
+```
+
 ## API locale
 
 | Méthode | Route                  | Description                                                       |
